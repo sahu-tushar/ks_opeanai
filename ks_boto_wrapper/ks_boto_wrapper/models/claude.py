@@ -4,6 +4,8 @@ import requests
 from pydantic import BaseModel
 from botocore.config import Config
 
+url = "http://20.197.39.253:3000/api/model/awsboto"
+
 # ----------------- Config ----------------- #
 boto_config = Config(
     connect_timeout=5,
@@ -76,15 +78,17 @@ class Claude:
         temperature: Optional[float] = 0.7,
         top_p: Optional[float] = 0.9,
     ) -> ClaudeResponse:
-        url = "http://20.197.39.253:8080/api/model/awsboto"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.client.aws_secret_access_key}"
         }
 
         payload = {
-            "model": model,
-            "messages": messages,
+            "type": "generate_response",
+            "data" : {
+                "model": model,
+                "messages": messages,
+            }
         }
 
         try:
@@ -93,6 +97,162 @@ class Claude:
 
         except Exception as e:
             raise RuntimeError(f"Claude API request failed: {e}")
+
+    def create_guardrail(
+        self,
+        name: str,
+        description: str,
+        topicPolicyConfig: Dict[str, Any],
+        contentPolicyConfig: Dict[str, Any],
+        wordPolicyConfig: Dict[str, Any],
+        sensitiveInformationPolicyConfig: Dict[str, Any],
+        blockedInputMessaging: str,
+        blockedOutputsMessaging: str
+    ):
+        """
+        Sends a POST request to your guardrail API with the specified configuration.
+        """
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.client.aws_secret_access_key}"  # Ensure this is secure
+        }
+
+        payload = {
+            "type": "create_guardrail",
+            "data": {
+                "name": name,
+                "description": description,
+                "topicPolicyConfig": topicPolicyConfig,
+                "contentPolicyConfig": contentPolicyConfig,
+                "wordPolicyConfig": wordPolicyConfig,
+                "sensitiveInformationPolicyConfig": sensitiveInformationPolicyConfig,
+                "blockedInputMessaging": blockedInputMessaging,
+                "blockedOutputsMessaging": blockedOutputsMessaging
+            }
+        }
+
+        try:
+            response = self.make_request("POST", url, headers=headers, json=payload)
+            return response
+
+        except requests.HTTPError as http_err:
+            print(f"HTTP error occurred: {http_err.response.status_code} - {http_err.response.text}")
+            return response
+
+        except requests.RequestException as req_err:
+            print(f"Request exception occurred: {req_err}")
+            return response
+    
+    def apply_guardrail(
+        self,
+        guardrailIdentifier: str,
+        guardrailVersion: str,
+        source: str,
+        content: str
+    ):
+        """
+        Applies a guardrail to a given piece of content.
+
+        Parameters:
+            guardrailIdentifier (str): Unique ID or name of the guardrail.
+            guardrailVersion (str): Specific version of the guardrail to apply.
+            source (str): Source type (e.g., "chat", "upload", etc.).
+            content (str): The content to evaluate.
+
+        Returns:
+            GuardrailResponse: Result of the guardrail application.
+        """
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.client.aws_secret_access_key}" 
+        }
+
+        payload = {
+            "type" : "apply_guardrail",
+            "data" : {
+                "guardrailIdentifier": guardrailIdentifier,
+                "guardrailVersion": guardrailVersion,
+                "source": source,
+                "content": content
+            }
+        }
+
+        try:
+            response = self.make_request("POST", url, headers=headers, json=payload)
+            return response
+
+        except requests.HTTPError as http_err:
+            print(f"HTTP error occurred: {http_err.response.status_code} - {http_err.response.text}")
+            return response
+
+        except requests.RequestException as req_err:
+            print(f"Request exception occurred: {req_err}")
+            return response
+
+    def converse_stream(
+        self,
+        modelId: str,
+        messages: List[Dict[str, str]],
+        system: str,
+        inferenceConfig: Dict[str, Any],
+        additionalModelRequestFields: Dict[str, Any]
+    ):
+        """
+        Streams a conversation response from a model using a custom inference endpoint.
+
+        Parameters:
+            modelId (str): The model identifier to use for inference.
+            messages (List[Dict[str, str]]): List of chat messages, e.g. [{"role": "user", "content": "Hi"}].
+            system (str): System prompt or instruction.
+            inferenceConfig (Dict[str, Any]): Configuration like temperature, maxTokens, etc.
+            additionalModelRequestFields (Dict[str, Any]): Any extra model-specific fields.
+
+        Returns:
+            GuardrailResponse: A streaming or collected response from the inference engine.
+        """
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.client.aws_secret_access_key}",  # Ensure this is handled securely
+            "Accept": "text/event-stream"  # Needed for SSE or streaming responses
+        }
+
+        payload = { 
+            "type" : "converse_stream",
+            "data" : {
+                "modelId": modelId,
+                "messages": messages,
+                "system": system,
+                "inferenceConfig": inferenceConfig,
+                "additionalModelRequestFields": additionalModelRequestFields
+            }
+        }
+
+        try:
+            response = self.make_request("POST", url, headers=headers, json=payload, stream=True)
+
+            # streamed_output = ""
+            # for line in response.iter_lines():
+            #     if line:
+            #         decoded_line = line.decode("utf-8")
+            #         # optionally parse if the line contains SSE structure like: "data: {...}"
+            #         if decoded_line.startswith("data: "):
+            #             decoded_line = decoded_line[len("data: "):]
+            #         streamed_output += decoded_line + "\n"
+            #         print("Streaming:", decoded_line)
+
+            return response
+
+        except requests.HTTPError as http_err:
+            print(f"HTTP error occurred: {http_err.response.status_code} - {http_err.response.text}")
+            return response
+
+        except requests.RequestException as req_err:
+            print(f"Request exception occurred: {req_err}")
+            return response
+
 
     def generate_response(
         self,
